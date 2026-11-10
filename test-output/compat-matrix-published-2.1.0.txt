@@ -1,0 +1,5 @@
+package: @exalabs/ai-sdk@2.1.0
+ai@6 zod@3     install=ok   types=FAIL runtime=1 pass / 1 fail  @exalabs/ai-sdk@2.1.0, ai@6.0.326, zod@3.25.76 ; docs-example.ts(34,11): error TS2353: Object literal may only specify known properties, and 'maxAgeHours' does not exist in type 'ContentsOptions'.
+ai@6 zod@4     install=ok   types=FAIL runtime=1 pass / 1 fail  @exalabs/ai-sdk@2.1.0, ai@6.0.326, zod@4.6.7 ; docs-example.ts(34,11): error TS2353: Object literal may only specify known properties, and 'maxAgeHours' does not exist in type 'ContentsOptions'.
+ai@7 zod@3     install=FAIL types=-    runtime=-                npm error code ERESOLVE | npm error ERESOLVE unable to resolve dependency tree | npm error Found: ai@7.0.166
+ai@7 zod@4     install=FAIL types=-    runtime=-                npm error code ERESOLVE | npm error ERESOLVE unable to resolve dependency tree | npm error Found: ai@7.0.166

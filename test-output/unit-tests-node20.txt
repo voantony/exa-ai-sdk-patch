@@ -1,0 +1,60 @@
+TAP version 13
+# Subtest: default request body is valid for Exa's SearchRequest schema and uses no deprecated fields
+ok 1 - default request body is valid for Exa's SearchRequest schema and uses no deprecated fields
+  ---
+  duration_ms: 728.354421
+  ...
+# Subtest: documented example from exa.ai/docs/integrations/vercel/ai-sdk forwards maxAgeHours
+ok 2 - documented example from exa.ai/docs/integrations/vercel/ai-sdk forwards maxAgeHours
+  ---
+  duration_ms: 174.096615
+  ...
+# Subtest: lite search body only uses parameters the spec allows for lite
+ok 3 - lite search body only uses parameters the spec allows for lite
+  ---
+  duration_ms: 134.77091
+  ...
+# Subtest: livecrawl combined with maxAgeHours is rejected up front
+ok 4 - livecrawl combined with maxAgeHours is rejected up front
+  ---
+  duration_ms: 0.451275
+  ...
+# Subtest: real API error surfaces as ExaApiError with status, tag and requestId
+ok 5 - real API error surfaces as ExaApiError with status, tag and requestId
+  ---
+  duration_ms: 126.052762
+  ...
+# Subtest: sends the integration headers and the configured key
+ok 6 - sends the integration headers and the configured key
+  ---
+  duration_ms: 167.147832
+  ...
+# Subtest: missing key fails before any request
+ok 7 - missing key fails before any request
+  ---
+  duration_ms: 0.427268
+  ...
+# Subtest: already-aborted signal: rejects with AbortError and makes no request (\#22)
+ok 8 - already-aborted signal: rejects with AbortError and makes no request (\#22)
+  ---
+  duration_ms: 0.315222
+  ...
+# Subtest: abort mid-flight cancels the real HTTP request (\#22)
+ok 9 - abort mid-flight cancels the real HTTP request (\#22)
+  ---
+  duration_ms: 3.189845
+  ...
+# Subtest: abort while the request is on the wire settles promptly (\#22)
+ok 10 - abort while the request is on the wire settles promptly (\#22)
+  ---
+  duration_ms: 22.077284
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1554.021083

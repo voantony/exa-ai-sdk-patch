@@ -1,0 +1,587 @@
+From de5b6d28bf5dd393216f4d73d291bcaf7ca4b0a5 Mon Sep 17 00:00:00 2001
+From: Antony Vo <antonyvo@mail.grokbot.com>
+Date: Tue, 10 Nov 2026 00:06:15 -0500
+Subject: [PATCH 1/3] feat: support AI SDK 7 and zod 4, forward abortSignal,
+ typed errors
+
+- peerDependencies: ai ^6 || ^7, zod ^3.25.76 || ^4.1.8 (same zod range ai itself uses); zod moves from dependencies to peerDependencies so one zod instance is shared with ai.
+- execute() forwards ToolExecutionOptions.abortSignal to fetch, rejects before any request when the signal is already aborted, and rethrows AbortError unchanged instead of wrapping it (fixes #22).
+- Non-2xx responses throw ExaApiError (status, tag, requestId, retryAfterSeconds, body). The message keeps the 2.x text.
+- Optional config.fetch for proxies and tests.
+- Tool output is typed as ExaApiResponse instead of unknown.
+- Stop sending the deprecated contents.livecrawl: "fallback" on every call; omitting it gives the same API default. Add contents.maxAgeHours (documented on exa.ai/docs/integrations/vercel/ai-sdk but not accepted by 2.1.0 types and dropped at runtime), lite / deep-lite types, people / publication categories, highlights.maxCharacters; mark deprecated options per Exa's OpenAPI spec. livecrawl + maxAgeHours throws up front since the API rejects the combination.
+
+Refs #4 (v7 request in the thread), fixes #22.
+---
+ package-lock.json |  92 ++++++++++++++++++++++++++++-------
+ package.json      |  15 +++---
+ src/index.ts      | 120 +++++++++++++++++++++++++++++++++++++---------
+ src/types.ts      |  54 ++++++++++++++++-----
+ 4 files changed, 224 insertions(+), 57 deletions(-)
+
+diff --git a/package-lock.json b/package-lock.json
+index 2fdd182..1774962 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -8,24 +8,25 @@
+       "name": "@exalabs/ai-sdk",
+       "version": "2.1.0",
+       "license": "MIT",
+-      "dependencies": {
+-        "zod": "^3.22.0"
+-      },
+       "devDependencies": {
+         "@types/node": "^20.0.0",
++        "ai": "^6.0.116",
++        "ajv": "^8.20.0",
+         "tsup": "^8.5.1",
+-        "typescript": "^5.3.0"
++        "typescript": "^5.3.0",
++        "zod": "^3.25.76"
+       },
+       "peerDependencies": {
+-        "ai": "^6.0.0"
++        "ai": "^6.0.0 || ^7.0.0",
++        "zod": "^3.25.76 || ^4.1.8"
+       }
+     },
+     "node_modules/@ai-sdk/gateway": {
+       "version": "3.0.66",
+       "resolved": "https://registry.npmjs.org/@ai-sdk/gateway/-/gateway-3.0.66.tgz",
+       "integrity": "sha512-SIQ0YY0iMuv+07HLsZ+bB990zUJ6S4ujORAh+Jv1V2KGNn73qQKnGO0JBk+w+Res8YqOFSycwDoWcFlQrVxS4A==",
++      "dev": true,
+       "license": "Apache-2.0",
+-      "peer": true,
+       "dependencies": {
+         "@ai-sdk/provider": "3.0.8",
+         "@ai-sdk/provider-utils": "4.0.19",
+@@ -42,8 +43,8 @@
+       "version": "3.0.8",
+       "resolved": "https://registry.npmjs.org/@ai-sdk/provider/-/provider-3.0.8.tgz",
+       "integrity": "sha512-oGMAgGoQdBXbZqNG0Ze56CHjDZ1IDYOwGYxYjO5KLSlz5HiNQ9udIXsPZ61VWaHGZ5XW/jyjmr6t2xz2jGVwbQ==",
++      "dev": true,
+       "license": "Apache-2.0",
+-      "peer": true,
+       "dependencies": {
+         "json-schema": "^0.4.0"
+       },
+@@ -55,8 +56,8 @@
+       "version": "4.0.19",
+       "resolved": "https://registry.npmjs.org/@ai-sdk/provider-utils/-/provider-utils-4.0.19.tgz",
+       "integrity": "sha512-3eG55CrSWCu2SXlqq2QCsFjo3+E7+Gmg7i/oRVoSZzIodTuDSfLb3MRje67xE9RFea73Zao7Lm4mADIfUETKGg==",
++      "dev": true,
+       "license": "Apache-2.0",
+-      "peer": true,
+       "dependencies": {
+         "@ai-sdk/provider": "3.0.8",
+         "@standard-schema/spec": "^1.1.0",
+@@ -554,8 +555,8 @@
+       "version": "1.9.0",
+       "resolved": "https://registry.npmjs.org/@opentelemetry/api/-/api-1.9.0.tgz",
+       "integrity": "sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg==",
++      "dev": true,
+       "license": "Apache-2.0",
+-      "peer": true,
+       "engines": {
+         "node": ">=8.0.0"
+       }
+@@ -914,8 +915,8 @@
+       "version": "1.1.0",
+       "resolved": "https://registry.npmjs.org/@standard-schema/spec/-/spec-1.1.0.tgz",
+       "integrity": "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==",
+-      "license": "MIT",
+-      "peer": true
++      "dev": true,
++      "license": "MIT"
+     },
+     "node_modules/@types/estree": {
+       "version": "1.0.8",
+@@ -938,8 +939,8 @@
+       "version": "3.1.0",
+       "resolved": "https://registry.npmjs.org/@vercel/oidc/-/oidc-3.1.0.tgz",
+       "integrity": "sha512-Fw28YZpRnA3cAHHDlkt7xQHiJ0fcL+NRcIqsocZQUSmbzeIKRpwttJjik5ZGanXP+vlA4SbTg+AbA3bP363l+w==",
++      "dev": true,
+       "license": "Apache-2.0",
+-      "peer": true,
+       "engines": {
+         "node": ">= 20"
+       }
+@@ -961,8 +962,8 @@
+       "version": "6.0.116",
+       "resolved": "https://registry.npmjs.org/ai/-/ai-6.0.116.tgz",
+       "integrity": "sha512-7yM+cTmyRLeNIXwt4Vj+mrrJgVQ9RMIW5WO0ydoLoYkewIvsMcvUmqS4j2RJTUXaF1HphwmSKUMQ/HypNRGOmA==",
++      "dev": true,
+       "license": "Apache-2.0",
+-      "peer": true,
+       "dependencies": {
+         "@ai-sdk/gateway": "3.0.66",
+         "@ai-sdk/provider": "3.0.8",
+@@ -976,6 +977,23 @@
+         "zod": "^3.25.76 || ^4.1.8"
+       }
+     },
++    "node_modules/ajv": {
++      "version": "8.20.0",
++      "resolved": "https://registry.npmjs.org/ajv/-/ajv-8.20.0.tgz",
++      "integrity": "sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "fast-deep-equal": "^3.1.3",
++        "fast-uri": "^3.0.1",
++        "json-schema-traverse": "^1.0.0",
++        "require-from-string": "^2.0.2"
++      },
++      "funding": {
++        "type": "github",
++        "url": "https://github.com/sponsors/epoberezkin"
++      }
++    },
+     "node_modules/any-promise": {
+       "version": "1.3.0",
+       "resolved": "https://registry.npmjs.org/any-promise/-/any-promise-1.3.0.tgz",
+@@ -1116,12 +1134,36 @@
+       "version": "3.0.6",
+       "resolved": "https://registry.npmjs.org/eventsource-parser/-/eventsource-parser-3.0.6.tgz",
+       "integrity": "sha512-Vo1ab+QXPzZ4tCa8SwIHJFaSzy4R6SHf7BY79rFBDf0idraZWAkYrDjDj8uWaSm3S2TK+hJ7/t1CEmZ7jXw+pg==",
++      "dev": true,
+       "license": "MIT",
+-      "peer": true,
+       "engines": {
+         "node": ">=18.0.0"
+       }
+     },
++    "node_modules/fast-deep-equal": {
++      "version": "3.1.3",
++      "resolved": "https://registry.npmjs.org/fast-deep-equal/-/fast-deep-equal-3.1.3.tgz",
++      "integrity": "sha512-f3qQ9oQy9j2AhBe/H9VC91wLmKBCCU/gDOnKNAYG5hswO7BLKj09Hc5HYNz9cGI++xlpDCIgDaitVs03ATR84Q==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/fast-uri": {
++      "version": "3.1.9",
++      "resolved": "https://registry.npmjs.org/fast-uri/-/fast-uri-3.1.9.tgz",
++      "integrity": "sha512-hS/0Wt3Ya043oKXs0sIxrMpKQITXhMLIrVAKKXi4gozGC9v7YRWVnXIZzjNPTO02M9BdxLCWqK1yRXgNziVyJQ==",
++      "dev": true,
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/fastify"
++        },
++        {
++          "type": "opencollective",
++          "url": "https://opencollective.com/fastify"
++        }
++      ],
++      "license": "BSD-3-Clause"
++    },
+     "node_modules/fdir": {
+       "version": "6.5.0",
+       "resolved": "https://registry.npmjs.org/fdir/-/fdir-6.5.0.tgz",
+@@ -1181,8 +1223,15 @@
+       "version": "0.4.0",
+       "resolved": "https://registry.npmjs.org/json-schema/-/json-schema-0.4.0.tgz",
+       "integrity": "sha512-es94M3nTIfsEPisRafak+HDLfHXnKBhV3vU5eqPcS3flIWqcxJWgXHXiey3YrpaNsanY5ei1VoYEbOzijuq9BA==",
+-      "license": "(AFL-2.1 OR BSD-3-Clause)",
+-      "peer": true
++      "dev": true,
++      "license": "(AFL-2.1 OR BSD-3-Clause)"
++    },
++    "node_modules/json-schema-traverse": {
++      "version": "1.0.0",
++      "resolved": "https://registry.npmjs.org/json-schema-traverse/-/json-schema-traverse-1.0.0.tgz",
++      "integrity": "sha512-NM8/P9n3XjXhIZn1lLhkFaACTOURQXjWhV4BA/RnOv8xvgqtqpAX9IO4mRQxSx1Rlo4tqzeqb0sOlruaOy3dug==",
++      "dev": true,
++      "license": "MIT"
+     },
+     "node_modules/lilconfig": {
+       "version": "3.1.3",
+@@ -1372,6 +1421,16 @@
+         "url": "https://paulmillr.com/funding/"
+       }
+     },
++    "node_modules/require-from-string": {
++      "version": "2.0.2",
++      "resolved": "https://registry.npmjs.org/require-from-string/-/require-from-string-2.0.2.tgz",
++      "integrity": "sha512-Xf0nWe6RseziFMu+Ap9biiUbmplq6S9/p+7w7YXP/JBHhrUDDUhwa+vANyubuqfZWTveU//DYVGsDG7RKL/vEw==",
++      "dev": true,
++      "license": "MIT",
++      "engines": {
++        "node": ">=0.10.0"
++      }
++    },
+     "node_modules/resolve-from": {
+       "version": "5.0.0",
+       "resolved": "https://registry.npmjs.org/resolve-from/-/resolve-from-5.0.0.tgz",
+@@ -1609,6 +1668,7 @@
+       "version": "3.25.76",
+       "resolved": "https://registry.npmjs.org/zod/-/zod-3.25.76.tgz",
+       "integrity": "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==",
++      "dev": true,
+       "license": "MIT",
+       "funding": {
+         "url": "https://github.com/sponsors/colinhacks"
+diff --git a/package.json b/package.json
+index 7e05e77..6a98e68 100644
+--- a/package.json
++++ b/package.json
+@@ -20,7 +20,9 @@
+   },
+   "scripts": {
+     "build": "tsup",
+-    "prepublishOnly": "npm run build"
++    "prepublishOnly": "npm run build",
++    "test": "npm run build && node --test test/*.test.mjs",
++    "test:compat": "node test/compat/run.mjs"
+   },
+   "publishConfig": {
+     "access": "public"
+@@ -45,14 +47,15 @@
+     "url": "https://github.com/exa-labs/ai-sdk/issues"
+   },
+   "peerDependencies": {
+-    "ai": "^6.0.0"
+-  },
+-  "dependencies": {
+-    "zod": "^3.22.0"
++    "ai": "^6.0.0 || ^7.0.0",
++    "zod": "^3.25.76 || ^4.1.8"
+   },
+   "devDependencies": {
+     "@types/node": "^20.0.0",
++    "ai": "^6.0.116",
++    "ajv": "^8.20.0",
+     "tsup": "^8.5.1",
+-    "typescript": "^5.3.0"
++    "typescript": "^5.3.0",
++    "zod": "^3.25.76"
+   }
+ }
+diff --git a/src/index.ts b/src/index.ts
+index b1d9860..9a9e0b4 100644
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -1,21 +1,70 @@
+-import { tool } from "ai";
++import { tool, type Tool } from "ai";
+ import { z } from "zod";
+-import type { ExaSearchConfig } from "./types";
++import type { ExaApiResponse, ExaSearchConfig } from "./types";
+ 
+ declare const __PKG_VERSION__: string;
+ 
++const EXA_SEARCH_URL = "https://api.exa.ai/search";
++
++/**
++ * Error thrown when the Exa API answers with a non-2xx status.
++ *
++ * The message keeps the 2.x format (`Exa API error: <status> - <body>`), and the
++ * parsed fields are exposed so callers can branch on them instead of parsing text.
++ */
++export class ExaApiError extends Error {
++  /** HTTP status code returned by the Exa API. */
++  readonly status: number;
++  /** Exa error tag such as `INVALID_API_KEY` or `RATE_LIMIT_EXCEEDED`, when the body is JSON. */
++  readonly tag?: string;
++  /** Exa request ID, when present. Include it when contacting Exa support. */
++  readonly requestId?: string;
++  /** Seconds from the `Retry-After` header, when present (429 and 503 responses). */
++  readonly retryAfterSeconds?: number;
++  /** Raw response body. */
++  readonly body: string;
++
++  constructor(status: number, body: string, retryAfter: string | null) {
++    super(`Exa API error: ${status} - ${body}`);
++    this.name = "ExaApiError";
++    this.status = status;
++    this.body = body;
++    try {
++      const parsed = JSON.parse(body);
++      if (parsed && typeof parsed === "object") {
++        if (typeof parsed.tag === "string") this.tag = parsed.tag;
++        if (typeof parsed.requestId === "string") this.requestId = parsed.requestId;
++      }
++    } catch {
++      // Non-JSON body, for example an HTML error page from a proxy. Keep it raw.
++    }
++    const seconds = retryAfter === null ? NaN : Number(retryAfter);
++    if (Number.isFinite(seconds)) this.retryAfterSeconds = seconds;
++  }
++}
++
++function isAbortError(error: unknown): boolean {
++  return (
++    typeof error === "object" &&
++    error !== null &&
++    "name" in error &&
++    ((error as { name: unknown }).name === "AbortError" ||
++      (error as { name: unknown }).name === "TimeoutError")
++  );
++}
++
+ /**
+  * Creates a web search tool powered by Exa for use with Vercel AI SDK
+- * 
++ *
+  * @param config - Configuration options for the Exa search
+  * @returns A tool that can be used with AI SDK's generateText, streamText, etc.
+- * 
++ *
+  * @example
+  * ```ts
+  * import { generateText } from "ai";
+  * import { webSearch } from "@exalabs/ai-sdk";
+  * import { openai } from "@ai-sdk/openai";
+- * 
++ *
+  * // Just set EXA_API_KEY in .env, then:
+  * const { text } = await generateText({
+  *   model: openai('gpt-4o-mini'),
+@@ -26,19 +75,32 @@ declare const __PKG_VERSION__: string;
+  * });
+  * ```
+  */
+-
+-export function webSearch(config: ExaSearchConfig = {}) {
++export function webSearch(
++  config: ExaSearchConfig = {},
++): Tool<{ query: string }, ExaApiResponse> {
+   const {
+     apiKey = process.env.EXA_API_KEY,
++    fetch: customFetch,
+     ...searchOptions
+   } = config;
+ 
++  const contents = searchOptions.contents || {};
++  if (contents.livecrawl !== undefined && contents.maxAgeHours !== undefined) {
++    throw new Error(
++      "Exa: contents.livecrawl and contents.maxAgeHours cannot be combined. livecrawl is deprecated; use maxAgeHours only (always -> 0, never -> -1, fallback -> omit).",
++    );
++  }
++
+   return tool({
+     description: "Search the web for code docs, current information, news, articles, and content. Use this when you need up-to-date information or facts from the internet. Performs real-time web searches and can scrape content from specific URLs.",
+     inputSchema: z.object({
+       query: z.string().min(1).max(500).describe("The web search query - be specific and clear about what you're looking for"),
+     }),
+-    execute: async ({ query }) => {
++    execute: async ({ query }, options) => {
++      const abortSignal = options?.abortSignal;
++      // Do no network work for a call that was already cancelled.
++      abortSignal?.throwIfAborted();
++
+       if (!apiKey) {
+         throw new Error("EXA_API_KEY is required. Set it in environment variables or pass it in config.");
+       }
+@@ -83,17 +145,14 @@ export function webSearch(config: ExaSearchConfig = {}) {
+       }
+ 
+       // Build contents object with defaults
+-      // Defaults: text with 1000 chars, livecrawl: "fallback"
+-      const contents = searchOptions.contents || {};
++      // Default: text with 3000 chars. Freshness is left to the API default
++      // (cached content when available, live crawl otherwise), which is what
++      // the deprecated livecrawl: "fallback" used to request.
+       requestBody.contents = {};
+ 
+       // Handle text content
+       if (contents.text !== undefined) {
+-        if (typeof contents.text === "boolean") {
+-          requestBody.contents.text = contents.text;
+-        } else {
+-          requestBody.contents.text = contents.text;
+-        }
++        requestBody.contents.text = contents.text;
+       } else {
+         // Default: get text with 3000 characters
+         requestBody.contents.text = { maxCharacters: 3000 };
+@@ -106,8 +165,12 @@ export function webSearch(config: ExaSearchConfig = {}) {
+       if (contents.summary !== undefined) {
+         requestBody.contents.summary = contents.summary;
+       }
+-      // Set livecrawl (default: "fallback")
+-      requestBody.contents.livecrawl = contents.livecrawl || "fallback";
++      if (contents.maxAgeHours !== undefined) {
++        requestBody.contents.maxAgeHours = contents.maxAgeHours;
++      }
++      if (contents.livecrawl !== undefined) {
++        requestBody.contents.livecrawl = contents.livecrawl;
++      }
+       if (contents.livecrawlTimeout) {
+         requestBody.contents.livecrawlTimeout = contents.livecrawlTimeout;
+       }
+@@ -122,8 +185,9 @@ export function webSearch(config: ExaSearchConfig = {}) {
+       }
+ 
+       // Call Exa API
++      const doFetch = customFetch ?? globalThis.fetch;
+       try {
+-        const response = await fetch("https://api.exa.ai/search", {
++        const response = await doFetch(EXA_SEARCH_URL, {
+           method: "POST",
+           headers: {
+             "Content-Type": "application/json",
+@@ -132,17 +196,27 @@ export function webSearch(config: ExaSearchConfig = {}) {
+             "User-Agent": `exa-vercel-ai-sdk ${__PKG_VERSION__}`,
+           },
+           body: JSON.stringify(requestBody),
++          signal: abortSignal,
+         });
+ 
+         if (!response.ok) {
+           const errorText = await response.text();
+-          throw new Error(`Exa API error: ${response.status} - ${errorText}`);
++          throw new ExaApiError(response.status, errorText, response.headers.get("retry-after"));
+         }
+ 
+         // Return the full API response for maximum flexibility and future-proofing
+-        const data = await response.json();
++        const data = (await response.json()) as ExaApiResponse;
+         return data;
+       } catch (error) {
++        // Cancellation must surface as-is so the AI SDK (and callers) can tell
++        // an aborted call apart from a failed one.
++        if (isAbortError(error) || abortSignal?.aborted) {
++          throw error;
++        }
++        if (error instanceof ExaApiError) {
++          error.message = `Failed to search with Exa: ${error.message}`;
++          throw error;
++        }
+         if (error instanceof Error) {
+           throw new Error(`Failed to search with Exa: ${error.message}`);
+         }
+@@ -153,13 +227,13 @@ export function webSearch(config: ExaSearchConfig = {}) {
+ }
+ 
+ // Export types for users
+-export type { 
+-  ExaSearchConfig, 
++export type {
++  ExaSearchConfig,
+   ExaSearchResult,
++  ExaApiResponse,
+   ContentsOptions,
+   TextOptions,
+   HighlightsOptions,
+   SummaryOptions,
+   ExtrasOptions,
+ } from "./types";
+-
+diff --git a/src/types.ts b/src/types.ts
+index 2e870ae..182d4f4 100644
+--- a/src/types.ts
++++ b/src/types.ts
+@@ -20,9 +20,11 @@ export interface SummaryOptions {
+  * Highlights options - text snippets the LLM identifies as most relevant from each page
+  */
+ export interface HighlightsOptions {
+-  /** Number of sentences to return for each snippet */
++  /** Maximum characters of highlights to return for each result */
++  maxCharacters?: number;
++  /** @deprecated Use `maxCharacters`. The API maps this to a character budget. */
+   numSentences?: number;
+-  /** Number of snippets to return for each result */
++  /** @deprecated Ignored by the API. */
+   highlightsPerUrl?: number;
+   /** Custom query to direct the LLM's selection of highlights */
+   query?: string;
+@@ -48,13 +50,22 @@ export interface ContentsOptions {
+   highlights?: boolean | HighlightsOptions;
+   /** Get AI-generated summary */
+   summary?: boolean | SummaryOptions;
+-  /** Livecrawl mode (default: "fallback"): "never", "fallback", "always", "preferred" */
++  /**
++   * Maximum age of cached content in hours (-1 to 720). `0` always fetches live,
++   * `-1` always uses the cache. When omitted, cached content is used when
++   * available and pages without it are fetched live.
++   */
++  maxAgeHours?: number;
++  /**
++   * @deprecated Use `maxAgeHours` (always -> 0, never -> -1, fallback -> omit).
++   * Cannot be combined with `maxAgeHours`. No longer sent by default.
++   */
+   livecrawl?: "never" | "fallback" | "always" | "preferred";
+   /** Livecrawl timeout in milliseconds */
+   livecrawlTimeout?: number;
+-  /** Number of subpages to crawl */
++  /** @deprecated on search. Pass result URLs to the Contents API instead. */
+   subpages?: number;
+-  /** Keyword to find specific subpages */
++  /** @deprecated on search. Pass result URLs to the Contents API instead. */
+   subpageTarget?: string | string[];
+   /** Extra content to retrieve */
+   extras?: ExtrasOptions;
+@@ -69,21 +80,40 @@ export interface ExaSearchConfig {
+    * Defaults to process.env.EXA_API_KEY
+    */
+   apiKey?: string;
++
++  /**
++   * Custom fetch implementation, for example to route through a proxy or to
++   * observe requests in tests. Defaults to the global `fetch`.
++   */
++  fetch?: typeof globalThis.fetch;
+   
+   /**
+    * Search type (default: "auto")
+    * - auto: Best search, intelligently combines keyword and neural
+    * - keyword: Fast keyword search
+    * - neural: Deep semantic search
+-   * - fast: Streamlined versions of neural and keyword
++   * - lite: Low-cost, low-latency search (accepts a restricted parameter set)
++   * - deep-lite: Lightweight research with synthesized results
+    * - deep: Comprehensive deep search with enhanced analysis
++   * - fast, instant, deep-reasoning: legacy types, still accepted by the API
+    */
+-  type?: "auto" | "keyword" | "neural" | "fast" | "deep";
++  type?: "auto" | "lite" | "deep-lite" | "deep" | "fast" | "instant" | "deep-reasoning" | "keyword" | "neural";
+   
+   /**
+    * Category to focus the search on
+    */
+-  category?: "company" | "research paper" | "news" | "pdf" | "github" | "personal site" | "linkedin profile" | "financial report";
++  category?:
++    | "company"
++    | "publication"
++    | "news"
++    | "personal site"
++    | "people"
++    | "financial report"
++    // Older values. The API treats unlisted strings as category hints.
++    | "research paper"
++    | "pdf"
++    | "github"
++    | "linkedin profile";
+   
+   /**
+    * Two-letter ISO country code for localized results (e.g., "US")
+@@ -107,12 +137,12 @@ export interface ExaSearchConfig {
+   excludeDomains?: string[];
+   
+   /**
+-   * Return results crawled after this date (ISO 8601 format)
++   * @deprecated Ignored by the API, which adds an `IGNORED_FIELD` warning.
+    */
+   startCrawlDate?: string;
+   
+   /**
+-   * Return results crawled before this date (ISO 8601 format)
++   * @deprecated Ignored by the API, which adds an `IGNORED_FIELD` warning.
+    */
+   endCrawlDate?: string;
+   
+@@ -184,8 +214,8 @@ export interface ExaSearchResult {
+ export interface ExaApiResponse {
+   /** Unique request ID */
+   requestId?: string;
+-  /** The search type that was ultimately used */
+-  resolvedSearchType?: "neural" | "keyword" | "fast" | "deep";
++  /** @deprecated May be an empty string. Do not branch on this value. */
++  resolvedSearchType?: string;
+   /** Array of search results */
+   results: ExaSearchResult[];
+   /** Detailed request tags and metadata */
+-- 
+2.47.3
+

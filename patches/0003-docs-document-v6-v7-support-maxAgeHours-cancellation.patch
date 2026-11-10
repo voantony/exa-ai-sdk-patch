@@ -1,0 +1,120 @@
+From 155fa936781762e638af1d54d8e198fb3b5ca8e1 Mon Sep 17 00:00:00 2001
+From: Antony Vo <antonyvo@mail.grokbot.com>
+Date: Tue, 10 Nov 2026 00:06:15 -0500
+Subject: [PATCH 3/3] docs: document v6/v7 support, maxAgeHours, cancellation
+ and ExaApiError; run tests in CI
+
+---
+ .github/workflows/ci.yml |  4 ++++
+ README.md                | 40 ++++++++++++++++++++++++++++++----------
+ 2 files changed, 34 insertions(+), 10 deletions(-)
+
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 1d7a6e8..4bffa75 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -24,3 +24,7 @@ jobs:
+         run: npm ci
+       - name: Build
+         run: npm run build
++      - name: Test
++        run: npm test
++      - name: Install and run against ai@6/7 with zod@3/4
++        run: npm run test:compat
+diff --git a/README.md b/README.md
+index 540a6b9..cb3946b 100644
+--- a/README.md
++++ b/README.md
+@@ -19,6 +19,8 @@ Exa is a Websearch API. Add Exa websearch tool to your LLMs in just a few lines
+ npm install @exalabs/ai-sdk
+ ```
+ 
++Works with AI SDK 6 and 7 (`ai@^6 || ^7`) and with zod 3.25+ or zod 4.
++
+ ## Quick Start
+ 
+ ```typescript
+@@ -45,7 +47,7 @@ Get your API key from the [Exa Dashboard](https://dashboard.exa.ai/api-keys).
+ - Type: `auto` (best search)
+ - Results: `10`
+ - Text: `3000 characters per result`
+-- Livecrawl: `fallback` (fresh content when needed)
++- Freshness: the API default (cached content when available, live crawl otherwise). Set `contents.maxAgeHours` for stricter freshness.
+ 
+ ## Setup
+ 
+@@ -73,7 +75,7 @@ const { text } = await generateText({
+       category: "company",                    // focus on companies
+       contents: {
+         text: { maxCharacters: 1000 },        // get up to 1000 chars per result
+-        livecrawl: "preferred",               // always get fresh content if possible
++        maxAgeHours: 1,                       // use cache only if under 1 hour old
+         summary: true,                        // return an AI-generated summary for each result
+       },
+     }),
+@@ -89,9 +91,10 @@ console.log(text);
+ ```typescript
+ webSearch({
+   // Search settings
+-  type: "auto",           // "auto", "keyword", "neural", "fast", "deep"
+-  category: "news",       // "company", "research paper", "news", "pdf", 
+-                          // "github", "personal site", "linkedin profile", "financial report"
++  type: "auto",           // "auto", "lite", "deep-lite", "deep"
++                          // (legacy: "fast", "instant", "deep-reasoning")
++  category: "news",       // "company", "publication", "news", "personal site",
++                          // "people", "financial report"
+   numResults: 10,
+   
+   // Filter by domain
+@@ -101,8 +104,6 @@ webSearch({
+   // Filter by date (ISO 8601)
+   startPublishedDate: "2025-01-01T00:00:00.000Z",
+   endPublishedDate: "2025-12-31T23:59:59.999Z",
+-  startCrawlDate: "2025-01-01T00:00:00.000Z",
+-  endCrawlDate: "2025-12-31T23:59:59.999Z",
+   
+   // Filter by text
+   includeText: ["AI"],    // Must contain
+@@ -120,10 +121,9 @@ webSearch({
+     summary: {
+       query: "Main points",
+     },
+-    livecrawl: "fallback",     // "never", "fallback", "always", "preferred"
++    highlights: { maxCharacters: 2000 },
++    maxAgeHours: 24,           // 0 = always live, -1 = cache only, omit = API default
+     livecrawlTimeout: 10000,
+-    subpages: 5,
+-    subpageTarget: "about",
+     extras: {
+       links: 5,
+       imageLinks: 3,
+@@ -132,6 +132,26 @@ webSearch({
+ })
+ ```
+ 
++Deprecated options still work and are forwarded unchanged: `contents.livecrawl`
++(use `maxAgeHours`; it cannot be combined with it), `startCrawlDate` /
++`endCrawlDate` (ignored by the API), `contents.subpages` / `subpageTarget`, and
++`highlights.numSentences` / `highlightsPerUrl`.
++
++## Cancellation and errors
++
++The tool forwards the AI SDK's `abortSignal` to its request, so stopping a
++`generateText` / `streamText` call (or passing `AbortSignal.timeout(ms)`) also
++cancels the Exa request. Non-2xx responses throw an `ExaApiError` with
++`status`, `tag` (for example `INVALID_API_KEY`, `RATE_LIMIT_EXCEEDED`),
++`requestId`, and `retryAfterSeconds` when Exa sends `Retry-After`.
++
++```typescript
++import { ExaApiError, webSearch } from "@exalabs/ai-sdk";
++```
++
++Pass `fetch` in the config to route requests through your own fetch
++implementation.
++
+ ## TypeScript Support
+ 
+ Full TypeScript types included:
+-- 
+2.47.3
+

@@ -1,0 +1,42 @@
+
+> @exalabs/ai-sdk@2.1.0 test
+> npm run build && node --test test/*.test.mjs
+
+
+> @exalabs/ai-sdk@2.1.0 build
+> tsup
+
+CLI Building entry: src/index.ts
+CLI Using tsconfig: tsconfig.json
+CLI tsup v8.5.1
+CLI Using tsup config: /workspace/exa-demo/upstream/ai-sdk/tsup.config.ts
+CLI Target: es2020
+CLI Cleaning output folder
+ESM Build start
+CJS Build start
+ESM dist/index.js 5.67 KB
+ESM ⚡️ Build success in 18ms
+CJS dist/index.cjs 6.74 KB
+CJS ⚡️ Build success in 18ms
+DTS Build start
+DTS ⚡️ Build success in 827ms
+DTS dist/index.d.ts  8.50 KB
+DTS dist/index.d.cts 8.50 KB
+✔ default request body is valid for Exa's SearchRequest schema and uses no deprecated fields (562.702733ms)
+✔ documented example from exa.ai/docs/integrations/vercel/ai-sdk forwards maxAgeHours (200.232986ms)
+✔ lite search body only uses parameters the spec allows for lite (136.424625ms)
+✔ livecrawl combined with maxAgeHours is rejected up front (0.520723ms)
+✔ real API error surfaces as ExaApiError with status, tag and requestId (173.57162ms)
+✔ sends the integration headers and the configured key (135.541496ms)
+✔ missing key fails before any request (0.768524ms)
+✔ already-aborted signal: rejects with AbortError and makes no request (#22) (0.584186ms)
+✔ abort mid-flight cancels the real HTTP request (#22) (2.259524ms)
+✔ abort while the request is on the wire settles promptly (#22) (21.231093ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1386.963266
