@@ -1,5 +1,7 @@
 # Patch for `@exalabs/ai-sdk`
 
+[![MIT license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 This is a patch against [exa-labs/ai-sdk](https://github.com/exa-labs/ai-sdk) (`@exalabs/ai-sdk` 2.1.0). It is not an official Exa package. It has not been submitted as a pull request, and it is not published to npm.
 
 The original package is MIT-licensed and authored by [Exa](https://exa.ai). This repository keeps that license.
